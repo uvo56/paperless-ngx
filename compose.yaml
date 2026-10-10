@@ -1,0 +1,197 @@
+# Paperless-ngx – eigenständiger Dokumentenmanagement-Stack.
+# Start:  docker compose up -d
+# Zugangsdaten und hostspezifische Werte kommen aus .env (Vorlage: .env.example),
+# optionale Zusatzfunktionen (Mailversand, KI) aus paperless-extra.env.
+# Aufbau nach dem offiziellen Beispiel docker/compose/docker-compose.postgres-tika.yml (v3.2.1).
+# Alle Optionen: https://docs.paperless-ngx.com/configuration/
+
+name: paperless-ngx
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Einstellungen von Paperless – gemeinsam für den Webserver und den Export-Backup-Dienst
+x-paperless-env: &paperless-env
+  PAPERLESS_REDIS: redis://broker:6379
+  PAPERLESS_DBENGINE: postgresql
+  PAPERLESS_DBHOST: db
+  PAPERLESS_DBNAME: paperless
+  PAPERLESS_DBUSER: paperless
+  PAPERLESS_DBPASS: ${POSTGRES_PASSWORD}
+  PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+  PAPERLESS_URL: ${PAPERLESS_URL}
+  PAPERLESS_TIME_ZONE: ${TZ}
+  PAPERLESS_APP_TITLE: ${PAPERLESS_APP_TITLE:-Paperless-ngx}
+  # Office-Dokumente und E-Mails über Tika und Gotenberg
+  PAPERLESS_TIKA_ENABLED: "true"
+  PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+  PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+  # OCR: Deutsch und Englisch; Seiten drehen, gerade richten, säubern (Standard)
+  PAPERLESS_OCR_LANGUAGE: deu+eng
+  PAPERLESS_DATE_PARSER_LANGUAGES: de+en
+  PAPERLESS_SEARCH_LANGUAGE: de
+  # Ablage im media-Ordner: Jahr/Korrespondent/Titel
+  PAPERLESS_FILENAME_FORMAT: "{{ created_year }}/{{ correspondent }}/{{ title }}"
+  # Consume-Ordner: Unterordner werden zu Tags, z. B. consume/Versicherung/ -> Tag "Versicherung"
+  PAPERLESS_CONSUMER_RECURSIVE: "true"
+  PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS: "true"
+  # 0 = sofortige Erkennung; für SMB/NFS-Freigaben auf z. B. 30 (Sekunden) setzen
+  PAPERLESS_CONSUMER_POLLING_INTERVAL: ${PAPERLESS_CONSUMER_POLLING_INTERVAL:-0}
+  # Barcodes: Trennblätter, ASN-Aufkleber (z. B. "ASN00123"), doppelseitige Scans
+  PAPERLESS_CONSUMER_ENABLE_BARCODES: "true"
+  PAPERLESS_CONSUMER_ENABLE_ASN_BARCODE: "true"
+  PAPERLESS_CONSUMER_ENABLE_COLLATE_DOUBLE_SIDED: "true"
+  PAPERLESS_EMPTY_TRASH_DELAY: "30"
+  USERMAP_UID: ${APP_UID:-1001}
+  USERMAP_GID: ${APP_GID:-1001}
+
+services:
+  broker:
+    image: docker.io/valkey/valkey:9.1.2-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    networks: [intern]
+    logging: *logging
+
+  db:
+    image: docker.io/library/postgres:18.6-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      # Ab PostgreSQL 18 liegt PGDATA unter /var/lib/postgresql/18/docker
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Bewusst kein "ports:" – die DB ist nur im internen Docker-Netz erreichbar.
+    networks: [intern]
+    logging: *logging
+
+  gotenberg:
+    image: docker.io/gotenberg/gotenberg:8.37
+    restart: unless-stopped
+    # Wandelt E-Mails per Chromium um: ohne JavaScript und ohne externe Inhalte
+    # (keine Tracking-Pixel), wie im offiziellen Beispiel.
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    networks: [intern]
+    logging: *logging
+
+  tika:
+    image: docker.io/apache/tika:3.3.1.0
+    restart: unless-stopped
+    networks: [intern]
+    logging: *logging
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.2.1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_started
+      gotenberg:
+        condition: service_started
+      tika:
+        condition: service_started
+    ports:
+      - "${PAPERLESS_PORT:-8000}:8000"
+    volumes:
+      - ./data/paperless:/usr/src/paperless/data
+      - ./data/media:/usr/src/paperless/media
+      - ./consume:/usr/src/paperless/consume
+      - ./backups/export:/usr/src/paperless/export
+    environment:
+      <<: *paperless-env
+      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER}
+      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD}
+    env_file:
+      # Optional: Mailversand, KI usw. (Vorlage: paperless-extra.env.example)
+      - path: ./paperless-extra.env
+        required: false
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    networks: [intern]
+    logging: *logging
+
+  # Tägliches Backup 1: Datenbank-Dump (postgres-18-Image, weil das pg_dump
+  # im Paperless-Image nur Version 17 hat und PostgreSQL 18 nicht sichern kann)
+  db-backup:
+    image: docker.io/library/postgres:18.6-trixie
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    user: "${APP_UID:-1001}:${APP_GID:-1001}"
+    entrypoint: ["/scripts/backup-loop.sh", "/scripts/backup-db-dump.sh"]
+    environment:
+      PGHOST: db
+      PGDATABASE: paperless
+      PGUSER: paperless
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups/db
+      BACKUP_TIME: ${BACKUP_TIME:-01:30}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      TZ: ${TZ}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./backups:/backups
+    # Das postgres-Image deklariert /var/lib/postgresql als Volume. Hier läuft
+    # kein Server, daher tmpfs statt eines überflüssigen anonymen Volumes.
+    tmpfs:
+      - /var/lib/postgresql
+    networks: [intern]
+    logging: *logging
+
+  # Tägliches Backup 2: vollständiger Export aller Dokumente und Metadaten mit dem
+  # offiziellen document_exporter (inkrementell nach backups/export)
+  export-backup:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.2.1
+    restart: unless-stopped
+    depends_on:
+      webserver:
+        condition: service_healthy
+    user: "${APP_UID:-1001}:${APP_GID:-1001}"
+    entrypoint: ["/scripts/backup-loop.sh", "/scripts/backup-export.sh"]
+    environment:
+      <<: *paperless-env
+      HOME: /tmp
+      TZ: ${TZ}
+      BACKUP_TIME: ${BACKUP_TIME:-01:30}
+    # Der Healthcheck des Images prüft den Webserver – der läuft hier nicht.
+    healthcheck:
+      disable: true
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./data/paperless:/usr/src/paperless/data
+      - ./data/media:/usr/src/paperless/media
+      - ./backups/export:/usr/src/paperless/export
+      # Wird vom Export nicht benutzt, aber Paperless prüft beim Start,
+      # ob der Ordner beschreibbar ist (verhindert zudem anonyme Volumes)
+      - ./consume:/usr/src/paperless/consume
+    networks: [intern]
+    logging: *logging
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  intern:

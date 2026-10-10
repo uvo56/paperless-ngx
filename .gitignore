@@ -1,0 +1,11 @@
+# Secrets - nie committen, stattdessen die *.example-Dateien pflegen
+.env
+paperless-extra.env
+*.key
+*.pem
+
+# Dokumente, Datenbank-Hilfsdaten, Eingangsordner und Backups
+data/
+consume/
+backups/
+*.log
