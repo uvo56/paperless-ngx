@@ -189,6 +189,31 @@ services:
     networks: [intern]
     logging: *logging
 
+  # Tägliche Kopie von backups/ auf den NAS-Share (nach den Backups um 01:30)
+  nas-sync:
+    build: ./nas-sync
+    image: paperless-ngx-nas-sync:1.0
+    restart: unless-stopped
+    user: "${APP_UID:-1001}:${APP_GID:-1001}"
+    entrypoint: ["/scripts/backup-loop.sh", "/scripts/nas-sync.sh"]
+    environment:
+      BACKUP_TIME: ${NAS_SYNC_TIME:-02:30}
+      NAS_SUBDIR: paperless-ngx
+      TZ: ${TZ}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./backups:/backups:ro
+      # NAS-Share (per /etc/fstab auf dem Host eingebunden, siehe Betriebshandbuch).
+      # rslave: Wird der Share erst nach dem Containerstart eingebunden, sieht
+      # der Container ihn trotzdem.
+      - type: bind
+        source: ${NAS_MOUNT:-/mnt/backup-dhost}
+        target: /nas
+        bind:
+          propagation: rslave
+    network_mode: none
+    logging: *logging
+
 volumes:
   pgdata:
   redisdata:

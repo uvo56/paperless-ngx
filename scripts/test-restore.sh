@@ -6,8 +6,14 @@
 #      in eine frische Wegwerf-Instanz (Projekt paperless-restoretest) importiert;
 #      Anzahl und Prüfsummen der Dokumente werden verglichen.
 # Vorher frisches Backup: scripts/backup.sh
+#
+#   scripts/test-restore.sh [backup-ordner]
+# Standard ist backups/. Mit z. B. /mnt/backup-dhost/paperless-ngx/backups
+# wird die Kopie auf dem NAS geprüft.
 set -eu
 cd "$(dirname "$0")/.."
+SRC="$(realpath "${1:-backups}")"
+export RESTORE_EXPORT_DIR="$SRC/export"
 
 RT="docker compose -f scripts/restoretest.compose.yml"
 run() { docker compose exec -T db-backup "$@" </dev/null; }
@@ -26,14 +32,16 @@ cleanup() {
 trap cleanup EXIT
 
 ORIG="$(sql paperless "$CHECK")"
+echo "Backup-Ordner:           $SRC"
 echo "Original:                $ORIG"
 FAIL=0
 
 echo "A) DB-Dump zurückspielen"
-DUMP="$(ls -1 backups/db/*.dump | tail -1)"
+DUMP="$(ls -1 "$SRC"/db/*.dump | tail -1)"
 echo "   Dump: $(basename "$DUMP")"
 run createdb restore_test
-run pg_restore --no-owner --single-transaction --dbname=restore_test "/backups/db/$(basename "$DUMP")"
+# Dump über die Standardeingabe übergeben – so geht jeder Ordner auf dem Host
+docker compose exec -T db-backup pg_restore --no-owner --single-transaction --dbname=restore_test < "$DUMP"
 A="$(sql restore_test "$CHECK")"
 echo "   Wiederhergestellt:    $A"
 [ "$A" = "$ORIG" ] || FAIL=1

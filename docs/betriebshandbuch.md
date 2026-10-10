@@ -68,7 +68,7 @@ Zwei Backup-Container laufen **täglich um 01:30 Uhr** (einstellbar in `.env`, `
 | Datenbank-Dump | `backups/db/paperless_JJJJ-MM-TT_HHMMSS.dump` | die komplette Datenbank. Dumps älter als 30 Tage werden gelöscht (`BACKUP_RETENTION_DAYS`). |
 | Dokument-Export | `backups/export/` | alle Dokumente, Metadaten, Benutzer und Einstellungen im offiziellen Exportformat. Inkrementell: Es werden nur Änderungen geschrieben. Der Export entspricht immer dem aktuellen Stand. |
 
-Ein vollständiges Backup besteht aus **`backups/` und `data/media/`**. Der Export allein reicht für eine Wiederherstellung schon aus. Zurzeit liegen die Backups nur lokal. Die Kopie auf ein NAS folgt, sobald der Share eingerichtet ist.
+Der Export enthält alle Dokumente und reicht allein für eine Wiederherstellung aus.
 
 ```bash
 docker compose logs db-backup export-backup
@@ -84,6 +84,31 @@ Erstellt sofort beide Backups, z. B. vor einem Update.
 scripts/test-restore.sh
 ```
 Prüft automatisch, ob sich beide Backups wiederherstellen lassen. Der neueste Dump wird in eine separate Test-Datenbank geladen. Der Export wird in eine frische Wegwerf-Instanz importiert, die danach wieder verschwindet. Verglichen werden Anzahl und Prüfsummen aller Dokumente. Am Ende muss `OK: Beide Backups vollständig wiederherstellbar` stehen. Dauer etwa 2 Minuten. Empfehlung: nach Updates und einmal im Monat.
+
+Die Kopie auf dem NAS prüft man mit `scripts/test-restore.sh /mnt/backup-dhost/paperless-ngx/backups`.
+
+### Offsite-Kopie auf das NAS
+
+Der Dienst `nas-sync` spiegelt den Ordner `backups/` **täglich um 02:30 Uhr** (nach dem lokalen Backup um 01:30 Uhr) auf die Synology (`192.168.103.10`, Freigabe `/volume1/backup-dhost`, Unterordner `paperless-ngx/backups/`). Die Uhrzeit steht in `.env` (`NAS_SYNC_TIME`).
+
+- Der Share wird auf dem Host über `/etc/fstab` unter `/mnt/backup-dhost` eingebunden (NFSv4.1). Er wird beim ersten Zugriff automatisch verbunden. Ist das NAS aus, startet der Host trotzdem normal.
+- **Sicherheitsprüfung:** Kopiert wird nur, wenn auf dem NAS die Datei `paperless-ngx/.backup-ziel` liegt. Ist der Share nicht eingebunden, bricht der Dienst mit `FEHLER` ab und schreibt nichts auf die lokale Platte.
+- **Spiegelung:** Was lokal gelöscht wird (alte Dumps), verschwindet auch auf dem NAS. Ältere Stände bewahren die **Snapshots der Synology** auf.
+
+```bash
+docker compose logs nas-sync
+```
+Zeigt, ob die letzte Kopie geklappt hat („NAS-Sync OK …“ oder „FEHLER …“).
+
+```bash
+scripts/nas-sync-now.sh
+```
+Kopiert sofort, z. B. direkt nach einem manuellen Backup.
+
+```bash
+ls -l /mnt/backup-dhost/paperless-ngx/backups/
+```
+Zeigt den Inhalt auf dem NAS. Der Befehl bindet den Share bei Bedarf automatisch ein.
 
 ## 5. Restore (Notfall)
 
@@ -151,7 +176,7 @@ Ein Wechsel der PostgreSQL-Hauptversion (z. B. 18 → 19) geht nicht durch einfa
 1. Testdokumente entfernen, indem die Instanz frisch aufgesetzt wird (wie Abschnitt 5, Schritt 2, ohne Import).
 2. In `.env` `PAPERLESS_APP_TITLE=Paperless-ngx` setzen und `PAPERLESS_ADMIN_PASSWORD` ändern.
 3. Starten, Benutzer anlegen, API-Benutzer für angebundene Anwendungen neu erzeugen (Abschnitt 7).
-4. Offsite-Backup aufs NAS muss eingerichtet und getestet sein.
+4. Offsite-Kopie prüfen: `scripts/nas-sync-now.sh`, danach `scripts/test-restore.sh /mnt/backup-dhost/paperless-ngx/backups`.
 
 ## 10. Testphase: Funktionstest
 
@@ -160,7 +185,11 @@ scripts/test-functions.sh
 ```
 Legt synthetische Testdokumente in `consume/` und prüft, ob OCR, ASN-Barcode, Trennblatt, Unterordner-Tag, Word-Dokument und E-Mail richtig verarbeitet werden. Läuft nur, solange die Instanz „TEST“ im Titel trägt.
 
-## 11. Fehlerbehebung
+## 11. Einstellungen am Docker-Host
+
+Der NAS-Share (`/etc/fstab`) und die Route zum KI-Host (`/etc/netplan/`) gelten für den ganzen Host. Sie sind im Betriebshandbuch der Eingangsrechnungen beschrieben (`/opt/stacks/eingangsrechnungen/docs/betriebshandbuch.md`, Abschnitt 8).
+
+## 12. Fehlerbehebung
 
 | Problem | Prüfen |
 |---|---|
@@ -169,4 +198,5 @@ Legt synthetische Testdokumente in `consume/` und prüft, ob OCR, ASN-Barcode, T
 | Dokument wird als Duplikat abgelehnt | Paperless erkennt identische Dateien und schon vergebene ASN. Das ist gewollt. |
 | Office-Datei oder E-Mail schlägt fehl | `docker compose ps tika gotenberg`; `docker compose logs --tail 50 tika gotenberg` |
 | Kein neues Backup | `docker compose logs db-backup export-backup`; freien Speicher prüfen mit `df -h /opt` |
+| NAS-Kopie schlägt fehl | `docker compose logs nas-sync`; `ls /mnt/backup-dhost/` (NAS erreichbar?); `systemctl status /mnt/backup-dhost` |
 | Anwendung erhält 401/403 | API-Token neu erzeugen (Abschnitt 7) |

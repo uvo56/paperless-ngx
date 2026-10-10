@@ -34,7 +34,7 @@ services:
       USERMAP_GID: ${APP_GID:-1001}
     volumes:
       # Der zu prüfende Export (nur lesend)
-      - ../backups/export:/usr/src/paperless/export:ro
+      - ${RESTORE_EXPORT_DIR:-../backups/export}:/usr/src/paperless/export:ro
     tmpfs:
       - /usr/src/paperless/data
       - /usr/src/paperless/media
