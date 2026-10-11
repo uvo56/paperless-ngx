@@ -187,7 +187,7 @@ Legt synthetische Testdokumente in `consume/` und prüft, ob OCR, ASN-Barcode, T
 
 ## 11. Einstellungen am Docker-Host
 
-Der NAS-Share (`/etc/fstab`) und die Route zum KI-Host (`/etc/netplan/`) gelten für den ganzen Host. Sie sind im Betriebshandbuch der Eingangsrechnungen beschrieben (`/opt/stacks/eingangsrechnungen/docs/betriebshandbuch.md`, Abschnitt 8).
+Der NAS-Share (`/etc/fstab`) und die Route zum KI-Host (`/etc/netplan/`) gelten für den ganzen Host. Sie sind im Betriebshandbuch der Eingangsrechnungen beschrieben (`/opt/stacks/eingangsrechnungen/docs/betriebshandbuch.md`, Abschnitt 9).
 
 ## 12. Fehlerbehebung
 
