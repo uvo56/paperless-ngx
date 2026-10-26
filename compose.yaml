@@ -153,6 +153,8 @@ services:
     volumes:
       - ./scripts:/scripts:ro
       - ./backups:/backups
+      # Statusdateien (Ergebnis des letzten Laufs); liest das Backend der Eingangsrechnungen für Mails
+      - ./backup-status:/status
     # Das postgres-Image deklariert /var/lib/postgresql als Volume. Hier läuft
     # kein Server, daher tmpfs statt eines überflüssigen anonymen Volumes.
     tmpfs:
@@ -183,6 +185,7 @@ services:
       - ./data/paperless:/usr/src/paperless/data
       - ./data/media:/usr/src/paperless/media
       - ./backups/export:/usr/src/paperless/export
+      - ./backup-status:/status
       # Wird vom Export nicht benutzt, aber Paperless prüft beim Start,
       # ob der Ordner beschreibbar ist (verhindert zudem anonyme Volumes)
       - ./consume:/usr/src/paperless/consume
@@ -203,6 +206,7 @@ services:
     volumes:
       - ./scripts:/scripts:ro
       - ./backups:/backups:ro
+      - ./backup-status:/status
       # NAS-Share (per /etc/fstab auf dem Host eingebunden, siehe Betriebshandbuch).
       # rslave: Wird der Share erst nach dem Containerstart eingebunden, sieht
       # der Container ihn trotzdem.

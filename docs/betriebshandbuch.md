@@ -110,6 +110,28 @@ ls -l /mnt/backup-dhost/paperless-ngx/backups/
 ```
 Zeigt den Inhalt auf dem NAS. Der Befehl bindet den Share bei Bedarf automatisch ein.
 
+### Statusdateien und Benachrichtigung per E-Mail
+
+Jeder Backup-Dienst schreibt nach seinem Lauf eine kleine Statusdatei nach `backup-status/`:
+
+| Datei | Dienst | Inhalt |
+|---|---|---|
+| `backup-db-dump.status` | `db-backup` | Zeitpunkt, Ergebnis, Dateiname, Größe, Anzahl Dumps, freier Platz |
+| `backup-export.status` | `export-backup` | Zeitpunkt, Ergebnis, Anzahl Dateien, Größe, freier Platz |
+| `nas-sync.status` | `nas-sync` | Zeitpunkt, Ergebnis, übertragene Dateien, freier Platz auf dem NAS |
+
+Die Dateien enthalten keine Dokumentinhalte und keine Zugangsdaten. Das Backend des Stacks **Eingangsrechnungen** liest den Ordner nur lesend. Es zeigt den Stand unter **Einstellungen → Datensicherung** und schickt bei einem Fehler oder einem überfälligen Backup (älter als 26 Stunden) eine E-Mail, freitags zusätzlich einen Wochenbericht. Eingerichtet wird das dort, siehe Betriebshandbuch Eingangsrechnungen.
+
+```bash
+cat backup-status/*.status
+```
+Zeigt den letzten Stand aller drei Dienste.
+
+```bash
+scripts/test-status.sh
+```
+Prüft das Schreiben der Statusdateien in einem Wegwerf-Container mit Platzhaltern. Datenbank, Dokumente, Backups und NAS werden dabei nicht berührt. Dauer etwa 1–2 Minuten.
+
 ## 5. Restore (Notfall)
 
 Der empfohlene Weg ist der offizielle Import des Exports (`backups/export`) in eine leere Instanz. Die Paperless-Version muss dieselbe sein wie beim Export. Dieser Ablauf ist getestet.
@@ -197,6 +219,6 @@ Der NAS-Share (`/etc/fstab`) und die Route zum KI-Host (`/etc/netplan/`) gelten 
 | Datei bleibt in `consume/` liegen | `docker compose logs --tail 50 webserver`; in der Oberfläche unter **Dateiaufgaben** nach Fehlern sehen |
 | Dokument wird als Duplikat abgelehnt | Paperless erkennt identische Dateien und schon vergebene ASN. Das ist gewollt. |
 | Office-Datei oder E-Mail schlägt fehl | `docker compose ps tika gotenberg`; `docker compose logs --tail 50 tika gotenberg` |
-| Kein neues Backup | `docker compose logs db-backup export-backup`; freien Speicher prüfen mit `df -h /opt` |
+| Kein neues Backup | `cat backup-status/*.status`; `docker compose logs db-backup export-backup`; freien Speicher prüfen mit `df -h /opt` |
 | NAS-Kopie schlägt fehl | `docker compose logs nas-sync`; `ls /mnt/backup-dhost/` (NAS erreichbar?); `systemctl status /mnt/backup-dhost` |
 | Anwendung erhält 401/403 | API-Token neu erzeugen (Abschnitt 7) |

@@ -9,3 +9,7 @@ data/
 consume/
 backups/
 *.log
+
+# Status der Backup-Dienste; Ordner bleibt im Repo, damit Docker ihn nicht als root anlegt
+backup-status/*
+!backup-status/.gitkeep
