@@ -15,7 +15,11 @@ frei_bytes() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4 * 1024}'; }
 schreibe_status() {
   datei="${STATUS_DIR}/$1"
   shift
-  [ -d "$STATUS_DIR" ] && [ -w "$STATUS_DIR" ] || return 0
+  if ! { [ -d "$STATUS_DIR" ] && [ -w "$STATUS_DIR" ]; }; then
+    # Ohne Statusdatei meldet die Überwachung (Eingangsrechnungen) nach 26 Stunden einen Fehler
+    echo "$(date '+%F %T') WARNUNG: Statusordner ${STATUS_DIR} fehlt oder ist nicht beschreibbar – kein Status geschrieben" >&2
+    return 0
+  fi
   tmp="${datei}.tmp.$$"
   { printf '%s\n' "$@" > "$tmp" && mv -f "$tmp" "$datei"; } 2>/dev/null || rm -f "$tmp" 2>/dev/null
   return 0

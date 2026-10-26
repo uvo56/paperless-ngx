@@ -122,6 +122,14 @@ Jeder Backup-Dienst schreibt nach seinem Lauf eine kleine Statusdatei nach `back
 
 Die Dateien enthalten keine Dokumentinhalte und keine Zugangsdaten. Das Backend des Stacks **Eingangsrechnungen** liest den Ordner nur lesend. Es zeigt den Stand unter **Einstellungen → Datensicherung** und schickt bei einem Fehler oder einem überfälligen Backup (älter als 26 Stunden) eine E-Mail, freitags zusätzlich einen Wochenbericht. Eingerichtet wird das dort, siehe Betriebshandbuch Eingangsrechnungen.
 
+**Einmalig nach der Einführung** (bzw. nach einer Änderung an den Ordnern in `compose.yaml`) die drei Backup-Container neu erstellen, damit sie den Ordner `backup-status/` sehen:
+
+```bash
+docker compose up -d db-backup export-backup nas-sync
+docker compose exec nas-sync ls -ld /status
+```
+Der erste Befehl erstellt die drei Container mit der neuen Einstellung neu. Dokumente und Datenbank bleiben unberührt. Der zweite muss einen Ordner `/status` zeigen. Fehlt der Ordner, schreibt der Dienst keinen Status. Dann steht im Log „WARNUNG: Statusordner … fehlt“, und die Überwachung meldet nach 26 Stunden einen Fehler per Mail.
+
 ```bash
 cat backup-status/*.status
 ```

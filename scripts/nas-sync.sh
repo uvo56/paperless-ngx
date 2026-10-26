@@ -36,7 +36,7 @@ if [ "$RC" -ne 0 ]; then
     "meldung=rsync Code ${RC} – Kopie unvollständig, Details im Log des Containers"
   exit 1
 fi
-STATS="$(grep -E '^Number of regular files transferred|^Total transferred file size' "$AUSGABE")"
+STATS="$(grep -E '^Number of regular files transferred|^Total transferred file size' "$AUSGABE" || true)"
 MELDUNG="$(echo "$STATS" | sed 's/^Number of regular files transferred: /Dateien übertragen: /; s/^Total transferred file size: /, Umfang: /' | tr '\n' ' ' | tr -s ' ')"
 echo "$(date '+%F %T') NAS-Sync OK nach ${NAS_SUBDIR}/backups: ${MELDUNG}"
 schreibe_status "nas-sync.status" "zeit=$(jetzt_iso)" "ergebnis=ok" "meldung=${MELDUNG% }" "frei=$(frei_bytes "${TARGET}")"
