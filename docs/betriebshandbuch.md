@@ -89,7 +89,7 @@ Die Kopie auf dem NAS prüft man mit `scripts/test-restore.sh /mnt/backup-dhost/
 
 ### Offsite-Kopie auf das NAS
 
-Der Dienst `nas-sync` spiegelt den Ordner `backups/` **täglich um 02:30 Uhr** (nach dem lokalen Backup um 01:30 Uhr) auf die Synology (`192.168.103.10`, Freigabe `/volume1/backup-dhost`, Unterordner `paperless-ngx/backups/`). Die Uhrzeit steht in `.env` (`NAS_SYNC_TIME`).
+Der Dienst `nas-sync` spiegelt den Ordner `backups/` **täglich um 02:30 Uhr** (nach dem lokalen Backup um 01:30 Uhr) auf die Synology (`192.168.103.10`, Freigabe `/volume1/backup-dhost-p2` (bis 26.10.2026 `/volume1/backup-dhost`), Unterordner `paperless-ngx/backups/`). Die Uhrzeit steht in `.env` (`NAS_SYNC_TIME`).
 
 - Der Share wird auf dem Host über `/etc/fstab` unter `/mnt/backup-dhost` eingebunden (NFSv4.1). Er wird beim ersten Zugriff automatisch verbunden. Ist das NAS aus, startet der Host trotzdem normal.
 - **Sicherheitsprüfung:** Kopiert wird nur, wenn auf dem NAS die Datei `paperless-ngx/.backup-ziel` liegt. Ist der Share nicht eingebunden, bricht der Dienst mit `FEHLER` ab und schreibt nichts auf die lokale Platte.
